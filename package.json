@@ -28,7 +28,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "http://github.com/your-github-username/your-repository"
+    "url": "https://github.com/MeToRaFRev/datapowervscode"
   },
   "scripts": {
     "lint": "eslint .",
