@@ -19,10 +19,6 @@
       {
         "command": "datapowervscode.manualDatapowerConnection",
         "title": "Manual Datapower Connection"
-      },
-      {
-        "command": "datapowervscode.changeDatapowerDomain",
-        "title": "Change Datapower Domain"
       }
     ]
   },

@@ -2,7 +2,7 @@ const { uploadFileToDataPower } = require('./datapower.js');
 const fs = require('fs');
 const path = require('path');
 let fileChangeWatcher;
-function startWatching(directory, domain, connectionDetails) {
+function startWatching(directory, domain, connectionDetails,dpFolder) {
     if (fileChangeWatcher) {
         fileChangeWatcher.close();
     }
@@ -17,7 +17,7 @@ function startWatching(directory, domain, connectionDetails) {
         timeout = setTimeout(async () => {
             if (eventType === 'change' && !filename.startsWith('_')) {
                 console.log(`Detected save in file: ${filename}`);
-                await uploadFileToDataPower(path.join(directory, filename), domain, connectionDetails);
+                await uploadFileToDataPower(path.join(directory, filename), domain, connectionDetails,dpFolder);
             } else {
                 console.log(`Detected ${eventType} in file: ${filename}`);
             }

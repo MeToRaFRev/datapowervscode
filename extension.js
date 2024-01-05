@@ -16,13 +16,13 @@ async function activate(context) {
 	try {
 		console.log('Your extension "datapowervscode" is now active!');
 		let folders;
+		const userChoice = await vscode.window.showInformationMessage(
+			'Do initialize DPSync?',
+			'Start', 'Cancel'
+		);
 		if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
 			// Prompt user to select a folder
-			const userChoice = await vscode.window.showInformationMessage(
-				'Do you want to select a folder to initialize DPSync?',
-				'Select Folder', 'Cancel'
-			);
-			if (userChoice === 'Select Folder') {
+			if (userChoice === 'Start') {
 				folders = await determineFolderPath();
 				if (!folders) {
 					vscode.window.showErrorMessage('Folder selection is required to start the extension.');
@@ -32,14 +32,19 @@ async function activate(context) {
 				return; // User cancelled the operation
 			}
 		} else {
+			if(userChoice === 'Start') {
 			// Use the first workspace folder
 			let folderUri = vscode.workspace.workspaceFolders[0].uri;
 			folders = { folderPath: folderUri.fsPath, folderUri };
+			}else{
+				return;
+			}
 		}
 		// Initialize status bar
 		statusBar.text = `DPSync: Initializing...`;
+		statusBar.command = 'datapowervscode.manualDatapowerConnection';
 		statusBar.show();
-
+		handleManualCommand(context);
 		// Determine folder path for synchronization
 		if (folders.status === 'opening') {
 			vscode.window.withProgress({
@@ -81,6 +86,7 @@ async function activate(context) {
 		console.log(connectionDetails);
 		statusBar.text = `DPSync: Connecting to ${connectionDetails.socket}`;
 		// Start the extension's main functionality
+		console.log({ folders })
 		const result = await startExtension(connectionDetails, folders.folderPath, statusBar);
 		if (!result) {
 			vscode.window.showErrorMessage(`Failed to start extension. result: ${result}`);
@@ -89,8 +95,6 @@ async function activate(context) {
 		}
 		const folderName = folders.folderPath.split('\\').pop();
 		statusBar.text = `DPSync: ${folderName} <-> ${result.dpFolder}`;
-		// Handle command registration
-		handleActivationCommands(context, statusBar);
 	} catch (error) {
 		vscode.window.showErrorMessage(`Activation Error: ${error.message}`);
 		console.error("Activation Error:", error);
@@ -178,7 +182,7 @@ async function startExtension(connectionDetails, folderPath, statusBar) {
 			}
 
 			progress.report({ message: "Setting up file watcher..." });
-			startWatching(folderPath, selectedDomain, connectionDetails);
+			startWatching(folderPath, selectedDomain, connectionDetails,fileManagement);
 
 			vscode.window.showInformationMessage(`Now watching ${folderPath} for changes.`);
 			extensionResult = { dpFolder: fileManagement, localFolder: folderPath };
@@ -194,14 +198,15 @@ async function startExtension(connectionDetails, folderPath, statusBar) {
 
 
 // Handles command registration and status bar updates
-function handleActivationCommands(context) {
+function handleManualCommand(context) {
 
 	let disposable = vscode.commands.registerCommand('datapowervscode.manualDatapowerConnection', async () => {
-		// Logic for manual DataPower connection
+		vscode.commands.executeCommand('workbench.action.reloadWindow');
 	});
 
 	context.subscriptions.push(disposable);
 }
+
 
 // This method is called when your extension is deactivated
 function deactivate() {
