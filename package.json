@@ -19,6 +19,10 @@
       {
         "command": "datapowervscode.manualDatapowerConnection",
         "title": "Manual Datapower Connection"
+      },
+      {
+        "command": "datapowervscode.restart",
+        "title": "Restart Extension"
       }
     ]
   },

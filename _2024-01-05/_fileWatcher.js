@@ -1,9 +1,8 @@
 const { uploadFileToDataPower } = require('./datapower.js');
 const fs = require('fs');
 const path = require('path');
-const vscode = require('vscode');
 let fileChangeWatcher;
-function startWatching(directory, domain, connectionDetails, dpFolder) {
+function startWatching(directory, domain, connectionDetails,dpFolder) {
     if (fileChangeWatcher) {
         fileChangeWatcher.close();
     }
@@ -18,12 +17,7 @@ function startWatching(directory, domain, connectionDetails, dpFolder) {
         timeout = setTimeout(async () => {
             if (eventType === 'change' && !filename.startsWith('_')) {
                 console.log(`Detected save in file: ${filename}`);
-                if (hasSyntaxErrors(vscode.Uri.file(path.join(directory, filename)))) {
-                    const response = await vscode.window.showErrorMessage(`File ${filename} has syntax errors. do you want to force upload?`, 'Yes', 'No');
-                    if (response !== 'Yes')
-                        return;
-                }
-                await uploadFileToDataPower(path.join(directory, filename), domain, connectionDetails, dpFolder);
+                await uploadFileToDataPower(path.join(directory, filename), domain, connectionDetails,dpFolder);
             } else {
                 console.log(`Detected ${eventType} in file: ${filename}`);
             }

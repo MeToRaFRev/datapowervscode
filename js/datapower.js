@@ -3,83 +3,97 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 async function uploadFileToDataPower(filePath, domain, connectionDetails, dpFolder) {
-    const fileName = path.basename(filePath);
-    let fileContent;
-    console.log(`Uploading file ${fileName} to DataPower`);
-    try {
-        fileContent = fs.readFileSync(filePath);
-    } catch (error) {
-        const deletedFileResponse = await axios.delete(`${connectionDetails.socket}/mgmt/filestore/${domain}/${dpFolder}/${fileName}`, {
-            headers: {
-                'Authorization': `Basic ${connectionDetails.authorization}`
+    await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: "Uploading file to DataPower",
+        cancellable: false
+    }, async (progress) => {
+        const fileName = path.basename(filePath);
+        let fileContent;
+        console.log(`Uploading file ${fileName} to DataPower`);
+        progress.report({ message: `Reading file ${fileName}` });
+        try {
+            fileContent = fs.readFileSync(filePath);
+        } catch (error) {
+            progress.report({ message: `Deleting file ${fileName}` });
+            const deletedFileResponse = await axios.delete(`${connectionDetails.socket}/mgmt/filestore/${domain}/${dpFolder}/${fileName}`, {
+                headers: {
+                    'Authorization': `Basic ${connectionDetails.authorization}`
+                }
+            });
+            if (/^2.*/.test(deletedFileResponse.status)) {
+                progress.report({ message: `File ${fileName} deleted successfully!`, increment: 100  });
+            } else {
+                progress.report({ message: `Failed to delete file ${fileName}`});
             }
-        });
-        if (/^2.*/.test(deletedFileResponse.status)) {
-            vscode.window.showInformationMessage(`File ${fileName} deleted successfully!`);
-        } else {
-            vscode.window.showErrorMessage(`Failed to delete file ${fileName}`);
+            return;
         }
-        return;
-    }
-    try {
-        console.log(`${connectionDetails.socket}/mgmt/filestore/${domain}/${dpFolder}/${fileName}`)
-        const fileExistsResponse = await axios.get(`${connectionDetails.socket}/mgmt/filestore/${domain}/${dpFolder}/${fileName}`, {
-            headers: {
-                'Authorization': `Basic ${connectionDetails.authorization}`
+        try {
+            progress.report({ message: `Checking if file ${fileName} exists in ${dpFolder}` });
+            console.log(`${connectionDetails.socket}/mgmt/filestore/${domain}/${dpFolder}/${fileName}`)
+            const fileExistsResponse = await axios.get(`${connectionDetails.socket}/mgmt/filestore/${domain}/${dpFolder}/${fileName}`, {
+                headers: {
+                    'Authorization': `Basic ${connectionDetails.authorization}`
+                }
+            });
+            console.log({ fileExistsResponse })
+            if (fileExistsResponse.status === 200) {
+                progress.report({ message: `File ${fileName} exists in ${dpFolder}` });
+                // if file exists check if there is a folder in the workspace with the date of today
+                // if not create one and put the current file in it
+                progress.report({ message: `Checking if backup folder for date ${new Date().toISOString().slice(0, 10)} exists` });
+                if (!fs.existsSync(path.join(vscode.workspace.workspaceFolders[0].uri.fsPath, `_${new Date().toISOString().slice(0, 10)}`))) {
+                    progress.report({ message: `Creating backup folder for date ${new Date().toISOString().slice(0, 10)}` });
+                    fs.mkdirSync(path.join(vscode.workspace.workspaceFolders[0].uri.fsPath, `_${new Date().toISOString().slice(0, 10)}`));
+                    progress.report({ message: `Backup folder for date ${new Date().toISOString().slice(0, 10)} created successfully!` });
+                }
+                if (!fs.existsSync(path.join(vscode.workspace.workspaceFolders[0].uri.fsPath, `_${new Date().toISOString().slice(0, 10)}`, `_${fileName}`))) {
+                    progress.report({ message: `Creating backup of file ${fileName}` });
+                    //this is base64 to string
+                    const fileContent = Buffer.from(fileExistsResponse.data.file, 'base64').toString('utf-8');
+                    fs.writeFileSync(path.join(vscode.workspace.workspaceFolders[0].uri.fsPath, `_${new Date().toISOString().slice(0, 10)}`, `_${fileName}`), fileContent);
+                    progress.report({ message: `Backup of file ${fileName} created successfully!` });
+                }
+                const fileUpdateBody = {
+                    "file": {
+                        "name": fileName,
+                        "content": Buffer.from(fileContent).toString('base64')
+                    }
+                }
+                console.log({ fileUpdateBody })
+                progress.report({ message: `Updating file ${fileName}` });
+                const fileUpdateResponse = await axios.put(`${connectionDetails.socket}/mgmt/filestore/${domain}/${dpFolder}/${fileName}`, fileUpdateBody, {
+                    headers: {
+                        'Authorization': `Basic ${connectionDetails.authorization}`
+                    }
+                })
+                console.log({ fileUpdateResponse })
+                if (fileUpdateResponse.status === 200) {
+                    progress.report({ message: `File ${fileName} updated successfully!`, increment: 100 });
+                }
             }
-        });
-        console.log({ fileExistsResponse })
-        if (fileExistsResponse.status === 200) {
-            // if file exists check if there is a folder in the workspace with the date of today
-            // if not create one and put the current file in it
-            if (!fs.existsSync(path.join(vscode.workspace.workspaceFolders[0].uri.fsPath, `_${new Date().toISOString().slice(0, 10)}`))) {
-                fs.mkdirSync(path.join(vscode.workspace.workspaceFolders[0].uri.fsPath, `_${new Date().toISOString().slice(0, 10)}`));
-                vscode.window.showInformationMessage(`Backup folder for date ${new Date().toISOString().slice(0, 10)} created successfully!`);
-            }
-            if (!fs.existsSync(path.join(vscode.workspace.workspaceFolders[0].uri.fsPath, `_${new Date().toISOString().slice(0, 10)}`, `_${fileName}`))) {
-                //this is base64 to string
-                const fileContent = Buffer.from(fileExistsResponse.data.file, 'base64').toString('utf-8');
-                fs.writeFileSync(path.join(vscode.workspace.workspaceFolders[0].uri.fsPath, `_${new Date().toISOString().slice(0, 10)}`, `_${fileName}`), fileContent);
-                vscode.window.showInformationMessage(`Backup of file ${fileName} created successfully!`);
-            }
-            const fileUpdateBody = {
+        }
+        catch (error) {
+            progress.report({ message: `File ${fileName} does not exist in ${dpFolder}` });
+            const fileBody = {
                 "file": {
                     "name": fileName,
                     "content": Buffer.from(fileContent).toString('base64')
                 }
             }
-            console.log({ fileUpdateBody })
-            const fileUpdateResponse = await axios.put(`${connectionDetails.socket}/mgmt/filestore/${domain}/${dpFolder}/${fileName}`, fileUpdateBody, {
+            progress.report({ message: `Uploading file ${fileName}` });
+            const response = await axios.post(`${connectionDetails.socket}/mgmt/filestore/${domain}/${dpFolder}`, fileBody, {
                 headers: {
                     'Authorization': `Basic ${connectionDetails.authorization}`
                 }
-            }).catch(error => {
-                console.log({ error });
-            })
-            console.log({ fileUpdateResponse })
-            if (fileUpdateResponse.status === 200) {
-                vscode.window.showInformationMessage(`File ${fileName} updated successfully!`);
+            });
+            if (/^2.*/.test(response.status)) {
+                progress.report({ message: `File ${fileName} uploaded successfully!`, increment: 100 });
+            } else {
+                progress.report({ message: `Failed to upload file ${fileName}` });
             }
         }
-    }
-    catch (error) {
-        const fileBody = {
-            "file": {
-                "name": fileName,
-                "content": Buffer.from(fileContent).toString('base64')
-            }
-        }
-        const response = await axios.post(`${connectionDetails.socket}/mgmt/filestore/${domain}/${dpFolder}`, fileBody, {
-            headers: {
-                'Authorization': `Basic ${connectionDetails.authorization}`
-            }
-        });
-        if (/^2.*/.test(response.status)) {
-            vscode.window.showInformationMessage(`File ${fileName} uploaded successfully!`);
-        } else {
-            vscode.window.showErrorMessage(`Failed to upload file ${fileName}`);
-        }
-    }
+    });
 }
 
 async function checkDataPowerConnection(connectionDetails) {
@@ -129,7 +143,7 @@ async function getDataPowerDomains(connectionDetails) {
 }
 
 
-async function getDataPowerFileManagementStatus(domain, connectionDetails,dpFolder) {
+async function getDataPowerFileManagementStatus(domain, connectionDetails, dpFolder) {
     console.log({ domain, connectionDetails })
     if (!connectionDetails || !domain) {
         return undefined;
@@ -142,8 +156,8 @@ async function getDataPowerFileManagementStatus(domain, connectionDetails,dpFold
         });
         if (fileManagmentResponse.status === 200) {
             if (fileManagmentResponse.data.filestore.location) {
-                const dpPath = await vscode.window.showQuickPick(fileManagmentResponse.data.filestore.location.map((folder)=>folder.name), { placeHolder: "Select a folder" });
-                return `${dpPath.slice(0,-1)}`;
+                const dpPath = await vscode.window.showQuickPick(fileManagmentResponse.data.filestore.location.map((folder) => folder.name), { placeHolder: "Select a folder" });
+                return `${dpPath.slice(0, -1)}`;
             } else if (fileManagmentResponse.data.filestore.location)
                 return undefined
         } else {
@@ -152,6 +166,7 @@ async function getDataPowerFileManagementStatus(domain, connectionDetails,dpFold
     } catch (error) {
         console.log(error);
         return undefined;
+
     }
 }
 

@@ -14,87 +14,9 @@ process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = 0;
 const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
 async function activate(context) {
 	try {
-		console.log('Your extension "datapowervscode" is now active!');
-		let folders;
-		const userChoice = await vscode.window.showInformationMessage(
-			'Do initialize DPSync?',
-			'Start', 'Cancel'
-		);
-		if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
-			// Prompt user to select a folder
-			if (userChoice === 'Start') {
-				folders = await determineFolderPath();
-				if (!folders) {
-					vscode.window.showErrorMessage('Folder selection is required to start the extension.');
-					return;
-				}
-			} else {
-				return; // User cancelled the operation
-			}
-		} else {
-			if(userChoice === 'Start') {
-			// Use the first workspace folder
-			let folderUri = vscode.workspace.workspaceFolders[0].uri;
-			folders = { folderPath: folderUri.fsPath, folderUri };
-			}else{
-				return;
-			}
-		}
-		// Initialize status bar
-		statusBar.text = `DPSync: Initializing...`;
-		statusBar.command = 'datapowervscode.manualDatapowerConnection';
-		statusBar.show();
+		handleRestartCommand(context);
 		handleManualCommand(context);
-		// Determine folder path for synchronization
-		if (folders.status === 'opening') {
-			vscode.window.withProgress({
-				location: vscode.ProgressLocation.Notification,
-				title: "Opening Folder",
-				cancellable: false
-			}, async (progress) => {
-				progress.report({ message: "Opening Folder..." });
-
-				// Create a promise that resolves when the workspace folders change
-				const folderLoaded = new Promise((resolve) => {
-					const disposable = vscode.workspace.onDidChangeWorkspaceFolders(() => {
-						disposable.dispose(); // Clean up the listener
-						resolve();
-					});
-				});
-
-				// Wait for the folder to be loaded
-				await folderLoaded;
-
-				// Update progress to complete
-				progress.report({ increment: 100 });
-			});
-			return;
-		}
-		if (!folders || !folders.folderPath || !folders.folderUri) {
-			vscode.window.showErrorMessage('Folder selection is required to start the extension.');
-			statusBar.text = `DPSync: Not Connected`;
-			return;
-		}
-
-		// Obtain connection details, either from saved config or user input
-		let connectionDetails = await getDataPowerConfig() || await promptForDataPowerCredentials();
-		if (!connectionDetails) {
-			vscode.window.showErrorMessage('DataPower connection details are required.');
-			statusBar.text = `DPSync: Not Connected`;
-			return;
-		}
-		console.log(connectionDetails);
-		statusBar.text = `DPSync: Connecting to ${connectionDetails.socket}`;
-		// Start the extension's main functionality
-		console.log({ folders })
-		const result = await startExtension(connectionDetails, folders.folderPath, statusBar);
-		if (!result) {
-			vscode.window.showErrorMessage(`Failed to start extension. result: ${result}`);
-			statusBar.text = `DPSync: Not Connected`;
-			return;
-		}
-		const folderName = folders.folderPath.split('\\').pop();
-		statusBar.text = `DPSync: ${folderName} <-> ${result.dpFolder}`;
+        await initializeExtension(context);
 	} catch (error) {
 		vscode.window.showErrorMessage(`Activation Error: ${error.message}`);
 		console.error("Activation Error:", error);
@@ -102,6 +24,88 @@ async function activate(context) {
 	context.subscriptions.push(statusBar);
 }
 
+async function initializeExtension(context,noConfig=false) {
+	console.log('Your extension "datapowervscode" is now active!');
+	let folders;
+	const userChoice = await vscode.window.showInformationMessage(
+		'Do initialize DPSync?',
+		'Start', 'Cancel'
+	);
+	if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
+		// Prompt user to select a folder
+		if (userChoice === 'Start') {
+			folders = await determineFolderPath();
+			if (!folders) {
+				vscode.window.showErrorMessage('Folder selection is required to start the extension.');
+				return;
+			}
+		} else {
+			return; // User cancelled the operation
+		}
+	} else {
+		if (userChoice === 'Start') {
+			// Use the first workspace folder
+			let folderUri = vscode.workspace.workspaceFolders[0].uri;
+			folders = { folderPath: folderUri.fsPath, folderUri };
+		} else {
+			return;
+		}
+	}
+	// Initialize status bar
+	statusBar.text = `DPSync: Initializing...`;
+	statusBar.command = 'datapowervscode.restart';
+	statusBar.show();
+	// Determine folder path for synchronization
+	if (folders.status === 'opening') {
+		vscode.window.withProgress({
+			location: vscode.ProgressLocation.Notification,
+			title: "Opening Folder",
+			cancellable: false
+		}, async (progress) => {
+			progress.report({ message: "Opening Folder..." });
+
+			// Create a promise that resolves when the workspace folders change
+			const folderLoaded = new Promise((resolve) => {
+				const disposable = vscode.workspace.onDidChangeWorkspaceFolders(() => {
+					disposable.dispose(); // Clean up the listener
+					resolve();
+				});
+			});
+
+			// Wait for the folder to be loaded
+			await folderLoaded;
+
+			// Update progress to complete
+			progress.report({ increment: 100 });
+		});
+		return;
+	}
+	if (!folders || !folders.folderPath || !folders.folderUri) {
+		vscode.window.showErrorMessage('Folder selection is required to start the extension.');
+		statusBar.text = `DPSync: Not Connected`;
+		return;
+	}
+
+	// Obtain connection details, either from saved config or user input
+	let connectionDetails = noConfig ? await promptForDataPowerCredentials() : await getDataPowerConfig() || await promptForDataPowerCredentials();
+	if (!connectionDetails) {
+		vscode.window.showErrorMessage('DataPower connection details are required.');
+		statusBar.text = `DPSync: Not Connected`;
+		return;
+	}
+	console.log(connectionDetails);
+	statusBar.text = `DPSync: Connecting to ${connectionDetails.socket}`;
+	// Start the extension's main functionality
+	console.log({ folders })
+	const result = await startExtension(connectionDetails, folders.folderPath, statusBar);
+	if (!result) {
+		vscode.window.showErrorMessage(`Failed to start extension. result: ${result}`);
+		statusBar.text = `DPSync: Not Connected`;
+		return;
+	}
+	const folderName = folders.folderPath.split('\\').pop();
+	statusBar.text = `DPSync: ${folderName} <-> ${result.dpFolder}`;
+}
 // Determine the folder path based on the workspace configuration
 async function determineFolderPath() {
 	const folderUri = await vscode.window.showOpenDialog({
@@ -182,7 +186,7 @@ async function startExtension(connectionDetails, folderPath, statusBar) {
 			}
 
 			progress.report({ message: "Setting up file watcher..." });
-			startWatching(folderPath, selectedDomain, connectionDetails,fileManagement);
+			startWatching(folderPath, selectedDomain, connectionDetails, fileManagement);
 
 			vscode.window.showInformationMessage(`Now watching ${folderPath} for changes.`);
 			extensionResult = { dpFolder: fileManagement, localFolder: folderPath };
@@ -201,12 +205,19 @@ async function startExtension(connectionDetails, folderPath, statusBar) {
 function handleManualCommand(context) {
 
 	let disposable = vscode.commands.registerCommand('datapowervscode.manualDatapowerConnection', async () => {
-		vscode.commands.executeCommand('workbench.action.reloadWindow');
+		await initializeExtension(context,true);
 	});
 
 	context.subscriptions.push(disposable);
 }
 
+function handleRestartCommand(context) {
+	let disposable = vscode.commands.registerCommand('datapowervscode.restart', async () => {
+		await initializeExtension(context);
+	});
+
+	context.subscriptions.push(disposable);
+}
 
 // This method is called when your extension is deactivated
 function deactivate() {
