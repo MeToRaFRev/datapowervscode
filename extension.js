@@ -104,7 +104,7 @@ async function initializeExtension(context,noConfig=false) {
 		return;
 	}
 	const folderName = folders.folderPath.split('\\').pop();
-	statusBar.text = `DPSync: ${folderName} <-> ${result.dpFolder}`;
+	statusBar.text = `${result.selectedDomain}:${result.dpFolder} <-> ${folderName}`;
 }
 // Determine the folder path based on the workspace configuration
 async function determineFolderPath() {
@@ -189,7 +189,7 @@ async function startExtension(connectionDetails, folderPath, statusBar) {
 			startWatching(folderPath, selectedDomain, connectionDetails, fileManagement);
 
 			vscode.window.showInformationMessage(`Now watching ${folderPath} for changes.`);
-			extensionResult = { dpFolder: fileManagement, localFolder: folderPath };
+			extensionResult = { dpFolder: fileManagement, localFolder: folderPath,selectedDomain };
 		});
 	} catch (error) {
 		vscode.window.showErrorMessage(`Error: ${error.message}`);

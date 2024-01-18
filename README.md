@@ -31,7 +31,6 @@ Download and install the extension from the Visual Studio Code Marketplace.
 ## Commands
 
 - `datapowervscode.manualDatapowerConnection`: Opens a panel to manually input or update DataPower connection details.
-- `datapowervscode.changeDatapowerDomain`: Allows changing the currently selected DataPower domain.
 
 ## Configuration
 

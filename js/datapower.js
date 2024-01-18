@@ -1,3 +1,4 @@
+//TODO : Upload full folder
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
@@ -22,9 +23,9 @@ async function uploadFileToDataPower(filePath, domain, connectionDetails, dpFold
                 }
             });
             if (/^2.*/.test(deletedFileResponse.status)) {
-                progress.report({ message: `File ${fileName} deleted successfully!`, increment: 100  });
+                progress.report({ message: `File ${fileName} deleted successfully!`, increment: 100 });
             } else {
-                progress.report({ message: `Failed to delete file ${fileName}`});
+                progress.report({ message: `Failed to delete file ${fileName}` });
             }
             return;
         }
@@ -156,8 +157,11 @@ async function getDataPowerFileManagementStatus(domain, connectionDetails, dpFol
         });
         if (fileManagmentResponse.status === 200) {
             if (fileManagmentResponse.data.filestore.location) {
-                const dpPath = await vscode.window.showQuickPick(fileManagmentResponse.data.filestore.location.map((folder) => folder.name), { placeHolder: "Select a folder" });
-                return `${dpPath.slice(0, -1)}`;
+                let dpPath = await vscode.window.showQuickPick(fileManagmentResponse.data.filestore.location.map((folder) => folder.name), { placeHolder: "Select a folder" });
+                dpPath = dpPath.slice(0, -1)
+                const subfolders = await searchSubfoldersAndChoose(domain, connectionDetails, dpPath);
+                console.log({ subfolders })
+                return subfolders;
             } else if (fileManagmentResponse.data.filestore.location)
                 return undefined
         } else {
@@ -169,6 +173,61 @@ async function getDataPowerFileManagementStatus(domain, connectionDetails, dpFol
 
     }
 }
+
+
+async function searchSubfoldersAndChoose(domain, connectionDetails, dpFolder) {
+    let currentFolder = dpFolder;
+
+    while (true) {
+        try {
+            console.log(`${connectionDetails.socket}/mgmt/filestore/${domain}/${currentFolder}`)
+            const subfoldersResponse = await axios.get(`${connectionDetails.socket}/mgmt/filestore/${domain}/${currentFolder}`, {
+                headers: {
+                    'Authorization': `Basic ${connectionDetails.authorization}`
+                }
+            });
+
+            if (subfoldersResponse.status === 200 && subfoldersResponse.data.filestore.location) {
+                console.log({ subfoldersResponse })
+                let directory = subfoldersResponse.data.filestore.location.directory;
+                if(!directory) {
+                    return currentFolder;
+                }
+                console.log({ directory })
+                if (!Array.isArray(directory)) {
+                    directory = [directory];
+                }
+
+                const subfolderNames = directory.map((folder) => folder.name);
+
+                const dpPath = await vscode.window.showQuickPick([...subfolderNames, 'Exit'], {
+                    placeHolder: `Select a folder in ${currentFolder} or choose 'Exit' to stop`
+                });
+
+                if (dpPath === 'Exit') {
+                    return currentFolder; // Return the final path when 'Exit' is selected
+                } else {
+                    // Ensure that the selected path is correctly formatted before appending
+                    let cleanedPath = dpPath.replace(/^[^\/]*\//, ''); // Remove any prefix before the first '/'
+                    cleanedPath = cleanedPath.replace(/\/$/, ''); // Remove trailing '/'
+
+                    // Construct the new path
+                    currentFolder = `${currentFolder}/${cleanedPath}`; // Append the cleaned path
+                }
+            } else {
+                vscode.window.showInformationMessage(`No subfolders found in ${currentFolder}`);
+                return currentFolder; // Return the current path if there are no subfolders
+            }
+        } catch (error) {
+            console.log(error);
+            
+            return currentFolder.split('/').slice(0, -1).join('/'); // Return the parent folder if there is an error
+        }
+    }
+}
+
+
+
 
 module.exports = {
     uploadFileToDataPower,
